@@ -5,6 +5,7 @@ from torch import nn
 import torch.nn.functional as F
 
 from torchvision import models
+from torchvision.models import ResNet34_Weights
 
 
 class SelfAttention(nn.Module):
@@ -145,7 +146,8 @@ class ImageCNN(nn.Module):
         super().__init__()
         self.normalize = normalize
         self.avgpool = nn.AdaptiveAvgPool2d((vert_anchors, horz_anchors))
-        self.features = models.resnet34(pretrained=True)
+        # self.features = models.resnet34(pretrained=True)
+        self.features = models.resnet34(weights=ResNet34_Weights.DEFAULT)
 
     def forward(self, x):
 

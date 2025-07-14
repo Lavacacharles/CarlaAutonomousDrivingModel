@@ -58,10 +58,16 @@ class MultiTaskAgent(autonomous_agent.AutonomousAgent):
 
 		self.config = GlobalConfig()
 		self.net = AttentionField(self.config, 'cuda')
-		self.net.encoder.load_state_dict(torch.load(os.path.join(path_to_conf_file, 'best_encoder.pth')))
-		self.net.decoder.load_state_dict(torch.load(os.path.join(path_to_conf_file, 'best_decoder.pth')))
 
-		self.plan_grid = self.net.create_plan_grid(self.config.plan_scale, self.config.plan_points, 1)
+		# self.net.encoder.load_state_dict(torch.load(os.path.join(path_to_conf_file, 'best_encoder.pth')))
+		# self.net.decoder.load_state_dict(torch.load(os.path.join(path_to_conf_file, 'best_decoder.pth')))
+		
+		encoder_ckpt = torch.load(os.path.join(path_to_conf_file, 'best_encoder.pth'), map_location='cuda' if torch.cuda.is_available() else 'cpu', weights_only=True)
+		decoder_ckpt = torch.load(os.path.join(path_to_conf_file, 'best_decoder.pth'), map_location='cuda' if torch.cuda.is_available() else 'cpu', weights_only=True)
+		self.net.encoder.load_state_dict(encoder_ckpt if isinstance(encoder_ckpt, dict) else encoder_ckpt.state_dict())
+		self.net.decoder.load_state_dict(decoder_ckpt if isinstance(decoder_ckpt, dict) else decoder_ckpt.state_dict())
+
+		self.plan_grid =	 self.net.create_plan_grid(self.config.plan_scale, self.config.plan_points, 1)
 		self.light_grid = self.net.create_light_grid(self.config.light_x_steps, self.config.light_y_steps, 1)
 
 		self.net.cuda()
@@ -202,11 +208,22 @@ class MultiTaskAgent(autonomous_agent.AutonomousAgent):
 		tick_data = self.tick(input_data)
 
 		if self.step < self.config.seq_len:
-			rgb = torch.from_numpy(scale_and_crop_image(Image.fromarray(tick_data['rgb']))).unsqueeze(0)
+			# rgb = torch.from_numpy(scale_and_crop_image(Image.fromarray(tick_data['rgb']))).unsqueeze(0)
+			rgb_np = scale_and_crop_image(Image.fromarray(tick_data['rgb'])).copy()
+			rgb = torch.from_numpy(rgb_np).unsqueeze(0)
+
 			self.input_buffer['rgb'].append(rgb.to('cuda', dtype=torch.float32))
-			rgb_left = torch.from_numpy(scale_and_crop_image(Image.fromarray(tick_data['rgb_left']))).unsqueeze(0)
+			
+			# rgb_left = torch.from_numpy(scale_and_crop_image(Image.fromarray(tick_data['rgb_left']))).unsqueeze(0)
+			rgb_left_np = scale_and_crop_image(Image.fromarray(tick_data['rgb_left'])).copy()
+			rgb_left = torch.from_numpy(rgb_left_np).unsqueeze(0)
+
 			self.input_buffer['rgb_left'].append(rgb_left.to('cuda', dtype=torch.float32))
-			rgb_right = torch.from_numpy(scale_and_crop_image(Image.fromarray(tick_data['rgb_right']))).unsqueeze(0)
+			
+			# rgb_right = torch.from_numpy(scale_and_crop_image(Image.fromarray(tick_data['rgb_right']))).unsqueeze(0)
+			rgb_right_np = scale_and_crop_image(Image.fromarray(tick_data['rgb_right'])).copy()
+			rgb_right = torch.from_numpy(rgb_right_np).unsqueeze(0)
+
 			self.input_buffer['rgb_right'].append(rgb_right.to('cuda', dtype=torch.float32))
 
 			control = carla.VehicleControl()
@@ -223,15 +240,24 @@ class MultiTaskAgent(autonomous_agent.AutonomousAgent):
 		target_point = torch.stack(tick_data['target_point']).to('cuda', dtype=torch.float32)
 		self.target_point_model = target_point
 
-		rgb = torch.from_numpy(scale_and_crop_image(Image.fromarray(tick_data['rgb']))).unsqueeze(0)
+		# rgb = torch.from_numpy(scale_and_crop_image(Image.fromarray(tick_data['rgb']))).unsqueeze(0)
+		rgb_np = scale_and_crop_image(Image.fromarray(tick_data['rgb'])).copy()
+		rgb = torch.from_numpy(rgb_np).unsqueeze(0)
+		
 		self.input_buffer['rgb'].popleft()
 		self.input_buffer['rgb'].append(rgb.to('cuda', dtype=torch.float32))
 		
-		rgb_left = torch.from_numpy(scale_and_crop_image(Image.fromarray(tick_data['rgb_left']))).unsqueeze(0)
+		# rgb_left = torch.from_numpy(scale_and_crop_image(Image.fromarray(tick_data['rgb_left']))).unsqueeze(0)
+		rgb_left_np = scale_and_crop_image(Image.fromarray(tick_data['rgb_left'])).copy()
+		rgb_left = torch.from_numpy(rgb_left_np).unsqueeze(0)
+		
 		self.input_buffer['rgb_left'].popleft()
 		self.input_buffer['rgb_left'].append(rgb_left.to('cuda', dtype=torch.float32))
 		
-		rgb_right = torch.from_numpy(scale_and_crop_image(Image.fromarray(tick_data['rgb_right']))).unsqueeze(0)
+		# rgb_right = torch.from_numpy(scale_and_crop_image(Image.fromarray(tick_data['rgb_right']))).unsqueeze(0)
+		rgb_right_np = scale_and_crop_image(Image.fromarray(tick_data['rgb_right'])).copy()
+		rgb_right = torch.from_numpy(rgb_right_np).unsqueeze(0)
+		
 		self.input_buffer['rgb_right'].popleft()
 		self.input_buffer['rgb_right'].append(rgb_right.to('cuda', dtype=torch.float32))
 		
@@ -313,7 +339,7 @@ class MultiTaskAgent(autonomous_agent.AutonomousAgent):
 			img_rows = []
 			flow_rows = []
 			for row in range(self.args['out_res']):
-				grid_x, grid_y, grid_t = torch.meshgrid(linspace_x, linspace_y[row], linspace_t[i].unsqueeze(0))
+				grid_x, grid_y, grid_t = torch.meshgrid(linspace_x, linspace_y[row], linspace_t[i].unsqueeze(0), indexing='ij')
 				grid_points = torch.stack((grid_x, grid_y, grid_t), dim=3).unsqueeze(0).repeat(1,1,1,1,1)
 				grid_points = grid_points.reshape(1,-1,3).to('cuda', dtype=torch.float32)
 				pred_img_pts, pred_img_offsets, _ = self.net.decode(grid_points, self.target_point_model, self.encoding_model)

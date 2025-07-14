@@ -225,7 +225,12 @@ class LeaderboardEvaluator(object):
         else:
             self.world.wait_for_tick()
 
-        if CarlaDataProvider.get_map().name != town:
+        # if CarlaDataProvider.get_map().name != town:
+        # print("------------------------------------------------------------------")
+        # print("Cambia")
+        # print(CarlaDataProvider.get_map().name)
+        # print("------------------------------------------------------------------")
+        if not CarlaDataProvider.get_map().name.endswith(town):
             raise Exception("The CARLA server uses the wrong map!"
                             "This scenario requires to use map {}".format(town))
 
@@ -484,3 +489,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    # print("test")

@@ -14,7 +14,7 @@ import math
 import xml.etree.ElementTree as ET
 
 from agents.navigation.global_route_planner import GlobalRoutePlanner
-from agents.navigation.global_route_planner_dao import GlobalRoutePlannerDAO
+# from agents.navigation.global_route_planner_dao import GlobalRoutePlannerDAO
 from agents.navigation.local_planner import RoadOption
 
 
@@ -139,10 +139,13 @@ def interpolate_trajectory(world, waypoints_trajectory, hop_resolution=1.0):
         - waypoints_trajectory: the current coarse trajectory
         - hop_resolution: is the resolution, how dense is the provided trajectory going to be made
     """
-
-    dao = GlobalRoutePlannerDAO(world.get_map(), hop_resolution)
-    grp = GlobalRoutePlanner(dao)
-    grp.setup()
+    try: 
+        # dao = GlobalRoutePlannerDAO(wmap=world.get_map(), sampling_resolution=hop_resolution)
+        grp = GlobalRoutePlanner(world.get_map(), sampling_resolution=hop_resolution)
+    except Exception as e:
+        print(f"[ERROR] No se pudo crear el planificador de rutas: {e}")
+        raise
+    # grp.setup()
     # Obtain route plan
     route = []
     for i in range(len(waypoints_trajectory) - 1):   # Goes until the one before the last.
