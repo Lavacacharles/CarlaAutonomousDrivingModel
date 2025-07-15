@@ -18,9 +18,14 @@ import time
 import py_trees
 import carla
 
-from scenario_runner.srunner.scenariomanager.carla_data_provider import CarlaDataProvider
-from scenario_runner.srunner.scenariomanager.timer import GameTime
-from scenario_runner.srunner.scenariomanager.watchdog import Watchdog
+# from scenario_runner.srunner.scenariomanager.carla_data_provider import CarlaDataProvider
+# from scenario_runner.srunner.scenariomanager.timer import GameTime
+# from scenario_runner.srunner.scenariomanager.watchdog import Watchdog
+
+from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
+from srunner.scenariomanager.timer import GameTime
+from srunner.scenariomanager.watchdog import Watchdog
+
 
 from leaderboard.autoagents.agent_wrapper import AgentWrapper, AgentError
 from leaderboard.envs.sensor_interface import SensorReceivedNoData
@@ -175,13 +180,36 @@ class ScenarioManager(object):
         if self._timestamp_last_run < timestamp.elapsed_seconds and self._running:
             self._timestamp_last_run = timestamp.elapsed_seconds
 
+            start_time = time.perf_counter()
+
             self._watchdog.update()
             # Update game time and actor information
+
+            end_time = time.perf_counter()
+            elapsed_time = end_time - start_time
+            event="update watchdog running scenario"
+            print(f"Event: {event} \nElapsed time: {elapsed_time:.6f} seconds")
+            
+            start_time = time.perf_counter()
+            
             GameTime.on_carla_tick(timestamp)
             CarlaDataProvider.on_carla_tick()
 
+            end_time = time.perf_counter()
+            elapsed_time = end_time - start_time
+            event="handling tick running scenario"
+            print(f"Event: {event} \nElapsed time: {elapsed_time:.6f} seconds")
+            
             try:
+                start_time = time.perf_counter()
+
                 ego_action = self._agent()
+                
+                end_time = time.perf_counter()
+                elapsed_time = end_time - start_time
+                event="getting action running scenario"
+                print(f"Event: {event} \nElapsed time: {elapsed_time:.6f} seconds")
+                
 
             # Special exception inside the agent that isn't caused by the agent
             except SensorReceivedNoData as e:
@@ -190,8 +218,20 @@ class ScenarioManager(object):
             except Exception as e:
                 raise AgentError(e)
 
+            start_time = time.perf_counter()
             self.ego_vehicles[0].apply_control(ego_action)
 
+            end_time = time.perf_counter()
+            elapsed_time = end_time - start_time
+            event="applying control running scenario"
+            print(f"Event: {event} \nElapsed time: {elapsed_time:.6f} seconds")
+            
+
+            end_time = time.perf_counter()
+            elapsed_time = end_time - start_time
+            event="getting action running scenario"
+            print(f"Event: {event} \nElapsed time: {elapsed_time:.6f} seconds")
+                
             # Tick scenario
             self.scenario_tree.tick_once()
 
@@ -209,9 +249,17 @@ class ScenarioManager(object):
             spectator.set_transform(carla.Transform(ego_trans.location + carla.Location(z=50),
                                                         carla.Rotation(pitch=-90)))
 
+        
         if self._running and self.get_running_status():
+            
+            start_time = time.perf_counter()
+            
             CarlaDataProvider.get_world().tick(self._timeout)
 
+            end_time = time.perf_counter()
+            elapsed_time = end_time - start_time
+            event="ticking next scenario"
+            print(f"Event: {event} \nElapsed time: {elapsed_time:.6f} seconds")
     def get_running_status(self):
         """
         returns:
