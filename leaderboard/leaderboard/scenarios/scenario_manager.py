@@ -18,9 +18,9 @@ import time
 import py_trees
 import carla
 
-from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
-from srunner.scenariomanager.timer import GameTime
-from srunner.scenariomanager.watchdog import Watchdog
+from scenario_runner.srunner.scenariomanager.carla_data_provider import CarlaDataProvider
+from scenario_runner.srunner.scenariomanager.timer import GameTime
+from scenario_runner.srunner.scenariomanager.watchdog import Watchdog
 
 from leaderboard.autoagents.agent_wrapper import AgentWrapper, AgentError
 from leaderboard.envs.sensor_interface import SensorReceivedNoData
@@ -119,21 +119,53 @@ class ScenarioManager(object):
         """
         Trigger the start of the scenario and wait for it to finish/fail
         """
+        start_time = time.perf_counter()
+
         self.start_system_time = time.time()
         self.start_game_time = GameTime.get_time()
 
         self._watchdog.start()
         self._running = True
 
+        end_time = time.perf_counter()
+        elapsed_time = end_time - start_time
+        event="initializing running scenario"
+        print(f"Event: {event} \nElapsed time: {elapsed_time:.6f} seconds")
+
         while self._running:
             timestamp = None
+            
+            start_time = time.perf_counter()
+            
             world = CarlaDataProvider.get_world()
+            
+            end_time = time.perf_counter()
+            elapsed_time = end_time - start_time
+            event="gettting_world running scenario"
+            print(f"Event: {event} \nElapsed time: {elapsed_time:.6f} seconds")
+            
             if world:
+                start_time = time.perf_counter()
+
                 snapshot = world.get_snapshot()
+                
+                end_time = time.perf_counter()
+                elapsed_time = end_time - start_time
+                event="snapshot running scenario"
+                print(f"Event: {event} \nElapsed time: {elapsed_time:.6f} seconds")
+
                 if snapshot:
                     timestamp = snapshot.timestamp
+            
             if timestamp:
+                start_time = time.perf_counter()
+                
                 self._tick_scenario(timestamp)
+                
+                end_time = time.perf_counter()
+                elapsed_time = end_time - start_time
+                event="ticking running scenario"
+                print(f"Event: {event} \nElapsed time: {elapsed_time:.6f} seconds")
 
     def _tick_scenario(self, timestamp):
         """

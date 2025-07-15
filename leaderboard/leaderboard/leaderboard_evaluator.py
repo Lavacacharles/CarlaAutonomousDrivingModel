@@ -21,15 +21,19 @@ import importlib
 import os
 import sys
 import gc
-import pkg_resources
+# import pkg_resources
 import sys
 import carla
 import copy
 import signal
+from importlib.metadata import version, PackageNotFoundError
+from packaging.version import Version
+import time
+import torch
 
-from srunner.scenariomanager.carla_data_provider import *
-from srunner.scenariomanager.timer import GameTime
-from srunner.scenariomanager.watchdog import Watchdog
+from scenario_runner.srunner.scenariomanager.carla_data_provider import *
+from scenario_runner.srunner.scenariomanager.timer import GameTime
+from scenario_runner.srunner.scenariomanager.watchdog import Watchdog
 
 from leaderboard.scenarios.scenario_manager import ScenarioManager
 from leaderboard.scenarios.route_scenario import RouteScenario
@@ -86,10 +90,20 @@ class LeaderboardEvaluator(object):
 
         self.traffic_manager = self.client.get_trafficmanager(int(args.trafficManagerPort))
 
-        dist = pkg_resources.get_distribution("carla")
-        if dist.version != 'leaderboard':
-            if LooseVersion(dist.version) < LooseVersion('0.9.10'):
-                raise ImportError("CARLA version 0.9.10.1 or newer required. CARLA version found: {}".format(dist))
+        # dist = pkg_resources.get_distribution("carla")
+        # if dist.version != 'leaderboard':
+        #     if LooseVersion(dist.version) < LooseVersion('0.9.10'):
+        #         raise ImportError("CARLA version 0.9.10.1 or newer required. CARLA version found: {}".format(dist))
+        try:
+            v = version("carla")
+            print(f"Versión de carla: {v}")
+            if v != "leaderboard" and Version(v) < Version("0.9.10"):
+                print("Versión no compatible")
+            else:
+                print("Versión compatible")
+        except PackageNotFoundError:
+            print("El paquete 'carla' no está instalado.")
+
 
         # Load agent
         module_name = os.path.basename(args.agent).split('.')[0]
@@ -264,15 +278,32 @@ class LeaderboardEvaluator(object):
         print("> Setting up the agent\033[0m")
 
         # Prepare the statistics of the route
+        start_time = time.perf_counter()
+        
         self.statistics_manager.set_route(config.name, config.index)
+        
+        end_time = time.perf_counter()
+        elapsed_time = end_time - start_time
+        event="setting route"
+        print(f"Event: {event} \nElapsed time: {elapsed_time:.6f} seconds")
 
         # Set up the user's agent, and the timer to avoid freezing the simulation
         try:
+            start_time = time.perf_counter()
+
             self._agent_watchdog.start()
+            
+            end_time = time.perf_counter()
+            elapsed_time = end_time - start_time
+            event="watchdog start"
+            print(f"Event: {event} \nElapsed time: {elapsed_time:.6f} seconds")
+
             agent_class_name = getattr(self.module_agent, 'get_entry_point')()
             self.agent_instance = getattr(self.module_agent, agent_class_name)(args.agent_config)
             config.agent = self.agent_instance
 
+            
+            start_time = time.perf_counter()
             # Check and store the sensors
             if not self.sensors:
                 self.sensors = self.agent_instance.sensors()
@@ -284,6 +315,12 @@ class LeaderboardEvaluator(object):
                 self.statistics_manager.save_sensors(self.sensor_icons, args.checkpoint)
 
             self._agent_watchdog.stop()
+            
+            end_time = time.perf_counter()
+            elapsed_time = end_time - start_time
+            event="validate configuration"
+            print(f"Event: {event} \nElapsed time: {elapsed_time:.6f} seconds")
+
 
         except SensorConfigurationInvalid as e:
             # The sensors are invalid -> set the ejecution to rejected and stop
@@ -314,14 +351,40 @@ class LeaderboardEvaluator(object):
 
         # Load the world and the scenario
         try:
-            self._load_and_wait_for_world(args, config.town, config.ego_vehicles)
-            self._prepare_ego_vehicles(config.ego_vehicles, False)
-            scenario = RouteScenario(world=self.world, config=config, debug_mode=args.debug)
-            self.statistics_manager.set_scenario(scenario.scenario)
+            start_time = time.perf_counter()
 
+            self._load_and_wait_for_world(args, config.town, config.ego_vehicles)
+            
+            end_time = time.perf_counter()
+            elapsed_time = end_time - start_time
+            event="loading world"
+            print(f"Event: {event} \nElapsed time: {elapsed_time:.6f} seconds")
+            
+            
+            start_time = time.perf_counter()
+            self._prepare_ego_vehicles(config.ego_vehicles, False)
+            
+            end_time = time.perf_counter()
+            elapsed_time = end_time - start_time
+            event="preparing vehicles"
+            print(f"Event: {event} \nElapsed time: {elapsed_time:.6f} seconds")
+            
+            
+            scenario = RouteScenario(world=self.world, config=config, debug_mode=args.debug)
+            
+            start_time = time.perf_counter()
+            
+            self.statistics_manager.set_scenario(scenario.scenario)
+            
+            end_time = time.perf_counter()
+            elapsed_time = end_time - start_time
+            event="setting scenario"
+            print(f"Event: {event} \nElapsed time: {elapsed_time:.6f} seconds")
+            
             # self.agent_instance._init()
             # self.agent_instance.sensor_interface = SensorInterface()
 
+            start_time = time.perf_counter()
             # Night mode
             if config.weather.sun_altitude_angle < 0.0:
                 for vehicle in scenario.ego_vehicles:
@@ -332,6 +395,11 @@ class LeaderboardEvaluator(object):
                 self.client.start_recorder("{}/{}_rep{}.log".format(args.record, config.name, config.repetition_index))
             self.manager.load_scenario(scenario, self.agent_instance, config.repetition_index)
 
+            end_time = time.perf_counter()
+            elapsed_time = end_time - start_time
+            event="loading scenario"
+            print(f"Event: {event} \nElapsed time: {elapsed_time:.6f} seconds")
+            
         except Exception as e:
             # The scenario is wrong -> set the ejecution to crashed and stop
             print("\n\033[91mThe scenario could not be loaded:")
@@ -353,8 +421,14 @@ class LeaderboardEvaluator(object):
 
         # Run the scenario
         # try:
+        start_time = time.perf_counter()
+        
         self.manager.run_scenario()
 
+        end_time = time.perf_counter()
+        elapsed_time = end_time - start_time
+        event="running scenario"
+        print(f"Event: {event} \nElapsed time: {elapsed_time:.6f} seconds")
         # except AgentError as e:
         #     # The agent has failed -> stop the route
         #     print("\n\033[91mStopping the route, the agent has crashed:")
@@ -402,8 +476,14 @@ class LeaderboardEvaluator(object):
         # agent_class_name = getattr(self.module_agent, 'get_entry_point')()
         # self.agent_instance = getattr(self.module_agent, agent_class_name)(args.agent_config)
 
+        start_time = time.perf_counter()
         route_indexer = RouteIndexer(args.routes, args.scenarios, args.repetitions)
+        end_time = time.perf_counter()
+        elapsed_time = end_time - start_time
+        event="route_indexer"
+        print(f"Event: {event} \nElapsed time: {elapsed_time:.6f} seconds")
 
+        start_time = time.perf_counter()
         if args.resume:
             route_indexer.resume(args.checkpoint)
             self.statistics_manager.resume(args.checkpoint)
@@ -411,6 +491,12 @@ class LeaderboardEvaluator(object):
             self.statistics_manager.clear_record(args.checkpoint)
             route_indexer.save_state(args.checkpoint)
 
+        end_time = time.perf_counter()
+        elapsed_time = end_time - start_time
+        event="check prev state"
+        print(f"Event: {event} \nElapsed time: {elapsed_time:.6f} seconds")
+
+        start_time = time.perf_counter()
         while route_indexer.peek():
             # setup
             config = route_indexer.next()
@@ -426,14 +512,38 @@ class LeaderboardEvaluator(object):
                     pass
 
             route_indexer.save_state(args.checkpoint)
+            break    
+        
+        end_time = time.perf_counter()
+        elapsed_time = end_time - start_time
+        event="loop route_indexer"
+        print(f"Event: {event} \nElapsed time: {elapsed_time:.6f} seconds")
 
         # save global statistics
+        
+        start_time = time.perf_counter()
+    
         print("\033[1m> Registering the global statistics\033[0m")
         global_stats_record = self.statistics_manager.compute_global_statistics(route_indexer.total)
+    
+        end_time = time.perf_counter()
+        elapsed_time = end_time - start_time
+        event="computing statistics"
+        print(f"Event: {event} \nElapsed time: {elapsed_time:.6f} seconds")
+
+        
+        start_time = time.perf_counter()
+    
         StatisticsManager.save_global_record(global_stats_record, self.sensor_icons, route_indexer.total, args.checkpoint)
+    
+        end_time = time.perf_counter()
+        elapsed_time = end_time - start_time
+        event="saving statistics"
+        print(f"Event: {event} \nElapsed time: {elapsed_time:.6f} seconds")
 
 
-def main():
+
+def loadArgs():
     description = "CARLA AD Leaderboard Evaluation: evaluate your Agent in CARLA scenarios\n"
 
     # general parameters
@@ -473,10 +583,12 @@ def main():
                         default='./simulation_results.json',
                         help="Path to checkpoint used for saving statistics and resuming")
 
-    arguments = parser.parse_args()
+    arguments = parser.parse_args() 
+    return arguments
 
+def main():
+    arguments = loadArgs()
     statistics_manager = StatisticsManager()
-
     try:
         leaderboard_evaluator = LeaderboardEvaluator(arguments, statistics_manager)
         leaderboard_evaluator.run(arguments)
@@ -489,4 +601,15 @@ def main():
 
 if __name__ == '__main__':
     main()
-    # print("test")
+
+    # arguments = loadArgs()
+    # some = list(arguments._get_kwargs())
+    # for i in some:
+    #     print(i)
+    print("yeah")
+
+
+
+
+
+
